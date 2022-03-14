@@ -208,13 +208,17 @@ def mse_loss(scores, target, loss_lambda):
     """
     #print("predict size: ", scores.size())
     scores = scores.squeeze()
-    v_mag = torch.sum(scores, dim=1)
+    #v_mag = torch.torch.sqrt((scores**2).sum(dim=1))
+    v_mag =torch.mean(scores, dim=1)
     #print("v_mag_size: ",v_mag.size())
-    #print(v_mag.size())
+    #print("prediction",v_mag)
     #print(target.size())
     #print(v_mag)
     #print(target)
-    L_r = torch.nn.MSELoss().forward(v_mag,target)
+    #print('diff ',v_mag-target)
+    L_r = torch.mean(torch.sqrt((v_mag-target)**2))
+    #print(L_r)
+    #L-r = L_r+loss_lambda*torch.max((v_mag-target)**2).
 
     return L_r
 

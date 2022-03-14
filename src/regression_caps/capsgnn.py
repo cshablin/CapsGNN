@@ -312,7 +312,7 @@ class CapsGNNTrainer(object):
                 batch = self.batches[step]
                 for path in batch:
                     data = self.create_input_data(path)
-                    #print(data["features"])
+                    #print("features: ",data["features"])
                     prediction,reconstruction_loss = self.model(data)
                     #print("predict size: ", prediction[0])
 
@@ -321,7 +321,7 @@ class CapsGNNTrainer(object):
                                        data["target"],
                                        self.args.lambd)
                     #print("mse : ",loss)
-                    loss = loss+self.args.theta*reconstruction_loss
+                    loss = loss #+ self.args.theta*reconstruction_loss
                     accumulated_losses = accumulated_losses + loss
                 accumulated_losses = accumulated_losses/len(batch)
                 print("ac loss ", accumulated_losses)
@@ -329,7 +329,7 @@ class CapsGNNTrainer(object):
                 optimizer.step()
                 losses = losses + accumulated_losses.item()
                 average_loss = losses/(step + 1)
-                self.steps.set_description("CapsGNN (Loss=%g)" % round(average_loss, 4))
+                self.steps.set_description("CapsGNN (Loss=%g)" % round(average_loss, 10))
 
 
     def fit__(self):
