@@ -14,7 +14,7 @@ def main():
     model = CapsGNNTrainer(args)
     #model.fit_classi()
     model.fit()
-    #model.test_mse()
+    model.test_mse()
     #model.score()
     #model.save_predictions()
 

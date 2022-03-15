@@ -143,6 +143,7 @@ class SecondaryCapsuleLayer(torch.nn.Module):
             b_ij = b_ij + u_vj1
             # b_max = torch.max(b_ij, dim = 2, keepdim = True)
             # b_ij = b_ij / b_max.values ## values can be zero so loss would be nan
+        #print(" output of second layer line: 146: ", b_ij)
         return v_j.squeeze(1)
 
 class Attention(torch.nn.Module):
@@ -209,14 +210,15 @@ def mse_loss(scores, target, loss_lambda):
     #print("predict size: ", scores.size())
     scores = scores.squeeze()
     #v_mag = torch.torch.sqrt((scores**2).sum(dim=1))
-    v_mag =torch.mean(scores, dim=1)
+    v_mag =torch.sum(scores, dim=1)
     #print("v_mag_size: ",v_mag.size())
     #print("prediction",v_mag)
     #print(target.size())
     #print(v_mag)
     #print(target)
     #print('diff ',v_mag-target)
-    L_r = torch.mean(torch.sqrt((v_mag-target)**2))
+    #L_r = torch.mean(torch.sqrt((v_mag-target)**2))
+    L_r = torch.nn.L1Loss().forward(v_mag,target)
     #print(L_r)
     #L-r = L_r+loss_lambda*torch.max((v_mag-target)**2).
 
