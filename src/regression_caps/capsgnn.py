@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm, trange
 from torch_geometric.nn import GCNConv
-from utils import create_numeric_mapping
+from utils import create_numeric_mapping,loss_plot_write
 from layers import ListModule, PrimaryCapsuleLayer, Attention, SecondaryCapsuleLayer
 from layers import margin_loss,mse_loss
 
@@ -300,11 +300,12 @@ class CapsGNNTrainer(object):
         optimizer = torch.optim.Adam(self.model.parameters(),
                                      lr=self.args.learning_rate,
                                      weight_decay=self.args.weight_decay)
-
+        list_loss = []
         for _ in tqdm(range(self.args.epochs), desc="Epochs: ", leave=True):
             random.shuffle(self.train_graph_paths)
             self.create_batches()
             losses = 0
+            loss_list_batch = []
             self.steps = trange(len(self.batches), desc="Loss")
             for step in self.steps:
                 accumulated_losses = 0
@@ -330,7 +331,14 @@ class CapsGNNTrainer(object):
                 optimizer.step()
                 losses = losses + accumulated_losses.item()
                 average_loss = losses/(step + 1)
+                loss_list_batch.append(average_loss)
                 self.steps.set_description("CapsGNN (Loss=%.10f)" % round(average_loss, 10))
+
+            outPath = './output/'
+            loss_plot_write(outPath,loss_list_batch,'CapsGCN_train_batch_vs_MSE')
+            list_loss.append(average_loss)
+
+            loss_plot_write(outPath,list_loss,'CapsGCN_train_MSE')
 
 
     def fit__(self):

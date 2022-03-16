@@ -218,7 +218,8 @@ def mse_loss(scores, target, loss_lambda):
     #print(target)
     #print('diff ',v_mag-target)
     #L_r = torch.mean(torch.sqrt((v_mag-target)**2))
-    L_r = torch.nn.L1Loss().forward(v_mag,target)
+    #L_r = torch.nn.L1Loss().forward(v_mag,target)
+    L_r = torch.nn.MSELoss().forward(v_mag,target)
     #print(L_r)
     #L-r = L_r+loss_lambda*torch.max((v_mag-target)**2).
 

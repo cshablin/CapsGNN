@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm, trange
 from torch_geometric.nn import GCNConv
-from utils import create_numeric_mapping
+from utils import create_numeric_mapping,loss_plot_write
 from layers import ListModule, PrimaryCapsuleLayer, Attention, SecondaryCapsuleLayer
 from layers import margin_loss
 
@@ -319,7 +319,7 @@ class CapsGNNTrainer(object):
         optimizer = torch.optim.Adam(self.model.parameters(),
                                      lr=self.args.learning_rate,
                                      weight_decay=self.args.weight_decay)
-
+        loss_list = []
         for _ in tqdm(range(self.args.epochs), desc="Epochs: ", leave=True):
             random.shuffle(self.train_graph_paths)
             self.create_batches()
@@ -360,6 +360,9 @@ class CapsGNNTrainer(object):
                 losses = losses + accumulated_losses.item()
                 average_loss = losses/(step + 1)
                 self.steps.set_description("CapsGNN (Loss=%.10f)" % round(average_loss, 10))
+            loss_list.append(average_loss)
+            outPath = './output/'
+            loss_plot_write(outPath,loss_list,"GCN_train_MSE")
 
     def test_mse(self):
             """
@@ -375,7 +378,9 @@ class CapsGNNTrainer(object):
                 prediction = prediction.reshape([prediction.size()[0]])
                 target = data["target"].reshape(500)
                 mse_loss = torch.nn.MSELoss().forward(prediction,target)
-                self.list_mse.append(np.mean(mse_loss.cpu().detach().numpy()))
+                abs_loss = torch.nn.L1Loss().forward(prediction,target)
+                loss = abs_loss
+                self.list_mse.append(np.mean(loss.cpu().detach().numpy()))
             print(f"MSE Score is : {np.mean(np.array(self.list_mse))} and std: {np.std(np.array(self.list_mse))}")
                 # prediction_mag = torch.sqrt((prediction**2).sum(dim=2))
                 # _, prediction_max_index = prediction_mag.max(dim=1)
