@@ -2,8 +2,10 @@
 
 import glob
 import json
+import pickle
 import random
 import torch
+from torchmetrics import SpearmanCorrCoef, PearsonCorrCoef
 import numpy as np
 import pandas as pd
 from tqdm import tqdm, trange
@@ -26,7 +28,7 @@ class CapsGNN(torch.nn.Module):
         """
         self.args = args
         self.number_of_features = number_of_features
-        self.number_of_features = 1
+        #self.number_of_features = 1
         self.number_of_targets = number_of_targets
         self._setup_layers()
 
@@ -287,8 +289,15 @@ class CapsGNNTrainer(object):
         :return features: Matrix of features.
         """
         features = np.zeros((len(data["labels"]), self.number_of_features))
-        for k in data["labels"].keys():
-            features[int(k),0]= data["labels"][k]
+        for k in data["boundary_features"].keys():
+            features[int(k),0]= data["boundary_features"][k]
+
+        if self.number_of_features>2:
+            for k in data["features-2"].keys():
+                features[int(k),0]= data["features-2"][k]
+
+            for k in data["features-3"].keys():
+                features[int(k),1]= data["features-3"][k]
 
         #node_indices = [node for node in range(len(data["labels"]))]
         #feature_indices = [self.feature_map[label] for label in data["labels"].values()]
@@ -324,9 +333,13 @@ class CapsGNNTrainer(object):
             random.shuffle(self.train_graph_paths)
             self.create_batches()
             losses = 0
+            average_loss=0
+            average_spear_cor = 0
+            spear_cor_all = 0
             self.steps = trange(len(self.batches), desc="Loss")
             for step in self.steps:
                 accumulated_losses = 0
+                spearman_cor_batch_avg = 0
                 optimizer.zero_grad()
                 batch = self.batches[step]
                 for path in batch:
@@ -344,25 +357,42 @@ class CapsGNNTrainer(object):
                                        #self.args.lambd)
                     #loss = loss  #+self.args.theta*reconstruction_loss
                     #prediction = torch.sqrt((prediction**2).sum(dim=1, keepdim=True)).reshape([500])
-                    #print(prediction.size())
-                    target = data["target"].reshape(500)
+
+                    target = data["target"]
+                    target = target.reshape(target.size()[0])
+                    #print(prediction.size(),target.size())
+                    #print(prediction)
+                    #print(target)
                     #print("target :" , target)
                     mse_loss = torch.nn.MSELoss()
                     abs_loss = torch.nn.L1Loss()
                     loss = mse_loss(prediction,target)
+                    spearman = PearsonCorrCoef() #SpearmanCorrCoef()
+                    spearman_cor = spearman(prediction,target)
+                    if spearman_cor > 0:
+                        delta = 1-spearman_cor
+                    else:
+                        delta = -1-spearman_cor
+                    #print(spearman_cor)
 
+
+                    spearman_cor_batch_avg+=spearman_cor
 
                     accumulated_losses = accumulated_losses + loss
 
                 accumulated_losses = accumulated_losses/len(batch)
-                accumulated_losses.backward()
+                spearman_cor_batch_avg = spearman_cor_batch_avg/len(batch)
+                accumulated_losses_tot = accumulated_losses
+                accumulated_losses_tot.backward()
                 optimizer.step()
                 losses = losses + accumulated_losses.item()
+                spear_cor_all += spearman_cor_batch_avg
+                average_spear_cor = spear_cor_all/(step+1)
                 average_loss = losses/(step + 1)
-                self.steps.set_description("CapsGNN (Loss=%.10f)" % round(average_loss, 10))
+                self.steps.set_description("CapsGNN (Loss=%.10f) (Spear Cor=%.10f)" % (round(average_loss, 10),average_spear_cor))
             loss_list.append(average_loss)
-            outPath = './output/'
-            loss_plot_write(outPath,loss_list,"GCN_train_MSE")
+            outPath = './graphSize100/output/'
+            loss_plot_write(outPath,loss_list,"0-1-norm-abs")
 
     def test_mse(self):
             """
@@ -372,16 +402,30 @@ class CapsGNNTrainer(object):
             self.model.eval()
             self.predictions = []
             self.list_mse = []
+            self.best_test_sample_path = []
+            self.diff =[]
+
+            self.lowest_loss = 999;
             for path in tqdm(self.test_graph_paths):
                 data = self.create_input_data(path)
                 prediction = self.model(data)
-                prediction = prediction.reshape([prediction.size()[0]])
-                target = data["target"].reshape(500)
+                prediction = prediction.reshape(prediction.size()[0])
+                target = data["target"]
+                target = target.reshape(target.size()[0])
                 mse_loss = torch.nn.MSELoss().forward(prediction,target)
                 abs_loss = torch.nn.L1Loss().forward(prediction,target)
-                loss = abs_loss
+                loss = mse_loss
+                #if loss<self.lowest_loss:
+                self.lowest_loss=loss #.cpu().detach().numpy()
+                self.best_test_sample_path.append(path)
+                self.predictions.append(prediction.cpu().detach().numpy())
+                self.diff.append(torch.abs(target-prediction).cpu().detach().numpy())
+
                 self.list_mse.append(np.mean(loss.cpu().detach().numpy()))
             print(f"MSE Score is : {np.mean(np.array(self.list_mse))} and std: {np.std(np.array(self.list_mse))}")
+
+
+
                 # prediction_mag = torch.sqrt((prediction**2).sum(dim=2))
                 # _, prediction_max_index = prediction_mag.max(dim=1)
                 # prediction = prediction_max_index.data.view(-1).item()
@@ -397,7 +441,7 @@ class CapsGNNTrainer(object):
         print("\n\nScoring.\n")
         self.model.eval()
         self.predictions = []
-        self.hits = []
+        self.diff = []
         for path in tqdm(self.test_graph_paths):
             data = self.create_input_data(path)
             prediction, _ = self.model(data)
@@ -405,7 +449,7 @@ class CapsGNNTrainer(object):
             _, prediction_max_index = prediction_mag.max(dim=1)
             prediction = prediction_max_index.data.view(-1).item()
             self.predictions.append(prediction)
-            self.hits.append(data["target"][prediction] == 1.0)
+
 
         print("\nAccuracy: " + str(round(np.mean(self.hits), 4)))
 
@@ -413,8 +457,36 @@ class CapsGNNTrainer(object):
         """
         Saving the test set predictions.
         """
-        identifiers = [path.split("/")[-1].strip(".json") for path in self.test_graph_paths]
-        out = pd.DataFrame()
-        out["id"] = identifiers
-        out["predictions"] = self.predictions
-        out.to_csv(self.args.prediction_path, index=None)
+
+        #identifiers = path.split("/")[-1].strip(".json") # for path in self.test_graph_paths]
+        output = {} #pd.DataFrame()
+        for s in range(len(self.best_test_sample_path)):
+            path = self.best_test_sample_path[s]
+            data = json.load(open(path))
+            out = {}
+            out['sample_path']=path
+            #out["id"] = identifiers
+            prediction = {}
+            pred_diff = {}
+            original_ids = data['original_labels']
+            keys = list(original_ids.keys())
+            for i in range(len(original_ids)):
+                prediction[original_ids[keys[i]]] = self.predictions[s][i]
+                pred_diff[original_ids[keys[i]]] = self.diff[s][i]
+
+            out["test_predictions"] = prediction
+            out["prediction_difference"] = pred_diff
+            #out.to_csv(self.args.prediction_path, index=None)
+            #print(out)
+            output[str(s)]=out
+
+        #out to_csv(self.args.prediction_path, index=None)
+        #nx.write_gpickle(list_ca_graph[:100],'CA_500_size_1ksamepls_new.pickle',pickle.DEFAULT_PROTOCOL)
+        file = open(self.args.prediction_path, 'wb')
+        pickle.dump(output, file)
+# dump information to that file
+
+        #with open(self.args.prediction_path, 'w') as outfile:
+         #   json.dump(out, outfile)
+
+

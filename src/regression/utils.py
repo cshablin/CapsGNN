@@ -1,6 +1,10 @@
 """Data reading and printing utils."""
 
 from texttable import Texttable
+import random, os
+import numpy as np
+import torch
+
 import matplotlib.pyplot as plt
 plt.style.use('seaborn-whitegrid')
 from matplotlib.pyplot import figure
@@ -25,16 +29,26 @@ def create_numeric_mapping(node_properties):
     """
     return {value:i for i, value in enumerate(node_properties)}
 
+def seed_everything(seed: int):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True
+
+
 def loss_plot_write(write_path,list_loss,type='train_MSE'):
-    prefix = "graphSample-500-" #+str(len(list_loss))#data_path.split("/")[-1]
+    prefix = "N-500-" #+str(len(list_loss))#data_path.split("/")[-1]
 
             # for x,y in zip(xs,ys):
 
     plt.plot(list_loss, 'r-')
 
-    plt.title("%s_%s_BC " % (prefix,type), fontsize=18)
-    plt.xlabel('Epoch', fontsize=16)
-    plt.ylabel('Loss', fontsize=16)
+    plt.title("%s_%s_BC " % (prefix,type), fontsize=12)
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('MSE', fontsize=12)
     # label = ["k=(5,10)", "k=(10,15)", "k=(15,5)", "k=(5,rank)", "k=(10, rank)", "k=(15,rank)"]
     # plt.annotate(label[x-1], # this is the text
     # (x,y),# these are the coordinates to position the label
