@@ -184,7 +184,7 @@ def margin_loss(scores, target, loss_lambda):
     #print("predict size: ", scores.size())
     scores = scores.squeeze()
     v_mag = torch.sqrt((scores**2).sum(dim=1, keepdim=True))
-    print(v_mag.size())
+    # print(v_mag.size())
     zero = Variable(torch.zeros(1))
     m_plus = 0.9
     m_minus = 0.1

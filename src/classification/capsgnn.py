@@ -3,6 +3,8 @@
 import glob
 import json
 import random
+from typing import Dict
+
 import torch
 import numpy as np
 import pandas as pd
@@ -184,21 +186,40 @@ class CapsGNNTrainer(object):
         """
         print("\nEnumerating feature and target values.\n")
         ending = "*.json"
+        # ending = "*agents_[0-5].json"
+        from pathlib import Path
+        self.train_graph_paths = Path(self.args.train_graph_folder).rglob(ending)
+        self.test_graph_paths = Path(self.args.test_graph_folder).rglob(ending)
 
-        self.train_graph_paths = glob.glob(self.args.train_graph_folder+ending)
-        self.test_graph_paths = glob.glob(self.args.test_graph_folder+ending)
+        # self.train_graph_paths = glob.glob(self.args.train_graph_folder+ending)
+        # self.test_graph_paths = glob.glob(self.args.test_graph_folder+ending)
+        # self.train_graph_paths = list(self.train_graph_paths)
+        self.train_graph_paths = [str(x) for x in self.train_graph_paths]
+        # self.test_graph_paths = list(self.test_graph_paths)
+        self.test_graph_paths = [str(x) for x in self.test_graph_paths]
         graph_paths = self.train_graph_paths + self.test_graph_paths
+        # graph_paths = list(self.train_graph_paths) + list(self.test_graph_paths)
 
         targets = set()
         features = set()
         for path in tqdm(graph_paths):
             data = json.load(open(path))
+            data = self.reorder_nodes_zero_based(data)
             targets = targets.union(set([data["target"]]))
             features = features.union(set(data["labels"]))
             #print(targets)
 
         self.target_map = create_numeric_mapping(targets)
         self.feature_map = create_numeric_mapping(features)
+        # import os
+        # _file = 'target_map.json'
+        # with open(_file, "w") as fp:
+        #     json.dump(self.target_map, fp, indent=True)
+        # os.chmod(_file, 0o644)
+        # _file = 'feature_map.json'
+        # with open(_file, "w") as fp:
+        #     json.dump(self.feature_map, fp, indent=True)
+        # os.chmod(_file, 0o644)
 
         self.number_of_features = len(self.feature_map)
         self.number_of_targets = len(self.target_map)
@@ -285,6 +306,7 @@ class CapsGNNTrainer(object):
         :return to_pass_forward: Data dictionary.
         """
         data = json.load(open(path))
+        data = self.reorder_nodes_zero_based(data)
         target = self.create_target(data)
         edges = self.create_edges(data)
         #print("torch edges: ",edges)
@@ -302,11 +324,13 @@ class CapsGNNTrainer(object):
                                      lr=self.args.learning_rate,
                                      weight_decay=self.args.weight_decay)
 
+        avg_losses = []
         for _ in tqdm(range(self.args.epochs), desc="Epochs: ", leave=True):
             random.shuffle(self.train_graph_paths)
             self.create_batches()
             losses = 0
             self.steps = trange(len(self.batches), desc="Loss")
+            loss_avg_backup = 0
             for step in self.steps:
                 accumulated_losses = 0
                 optimizer.zero_grad()
@@ -315,7 +339,7 @@ class CapsGNNTrainer(object):
                     data = self.create_input_data(path)
                     #print(data["features"])
                     prediction,reconstruction_loss = self.model(data)
-                    print("predict size: ", prediction.size())
+                    # print("predict size: ", prediction.size())
 
                    # print(prediction)
                     loss = margin_loss(prediction,
@@ -328,7 +352,10 @@ class CapsGNNTrainer(object):
                 optimizer.step()
                 losses = losses + accumulated_losses.item()
                 average_loss = losses/(step + 1)
+                loss_avg_backup = average_loss
                 self.steps.set_description("CapsGNN (Loss=%g)" % round(average_loss, 4))
+            avg_losses.append(loss_avg_backup)
+        print(avg_losses)
 
     def score(self):
         """
@@ -358,3 +385,24 @@ class CapsGNNTrainer(object):
         out["id"] = identifiers
         out["predictions"] = self.predictions
         out.to_csv(self.args.prediction_path, index=None)
+
+    def reorder_nodes_zero_based(self, data: Dict) -> Dict:
+        result = {}
+        for k, v in data.items():
+            if k == 'edges' or k == 'labels':
+                continue
+            result[k] = v
+
+        result['edges'] = []
+        result['labels'] = {}
+        node_2_zero_based = {}
+        i = 0
+        for node in data['labels'].keys():
+            node_2_zero_based[int(node)] = i
+            i += 1
+        for edge in data['edges']:
+            result['edges'].append([node_2_zero_based[edge[0]], node_2_zero_based[edge[1]]])
+        for node, tag in data['labels'].items():
+            result['labels'][str(node_2_zero_based[int(node)])] = str(int(tag) + 1)
+        return result
+
